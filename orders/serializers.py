@@ -10,14 +10,24 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'order', 'product', 'product_name', 'quantity', 'price']
 
     def validate(self, data):
+        errors = {}
+
         product = data.get('product')
         quantity = data.get('quantity')
 
-        if product.stock < quantity:
-            raise serializers.ValidationError(f"{product.name} uchun yetarli mahsulot mavjud emas. Omborda: {product.stock} dona.")
+        if product and quantity:
+            if product.stock < quantity:
+                errors['quantity'] = f"{product.name} uchun yetarli mahsulot mavjud emas. Omborda: {product.stock} dona."
 
-        if quantity <= 0:
-            raise serializers.ValidationError("Buyurtma miqdori 1 dan katta bo‘lishi kerak.")
+            if quantity <= 0:
+                errors['quantity'] = "Buyurtma miqdori 1 dan katta bo‘lishi kerak."
+
+        price = data.get('price')
+        if price is not None and price < 0:
+            errors['price'] = "Narx manfiy bo‘lishi mumkin emas."
+
+        if errors:
+            raise serializers.ValidationError(errors)
 
         return data
 
@@ -30,23 +40,30 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['id', 'customer_name', 'customer_email', 'customer_phone', 'total_price', 'status', 'created_at', 'items']
 
-    def validate_customer_email(self, value):
-        if "@" not in value or "." not in value:
-            raise serializers.ValidationError("To‘g‘ri email manzilini kiriting.")
-        return value
-
-    def validate_customer_phone(self, value):
-        if not value.isdigit():
-            raise serializers.ValidationError("Telefon raqami faqat raqamlardan iborat bo‘lishi kerak.")
-        if len(value) < 7 or len(value) > 15:
-            raise serializers.ValidationError("Telefon raqam uzunligi 7 dan 15 gacha bo‘lishi kerak.")
-        return value
-
     def validate(self, data):
-        if data['status'] not in dict(Order.STATUS_CHOICES):
-            raise serializers.ValidationError("Noto‘g‘ri buyurtma holati.")
+        errors = {}
 
-        if len(data['customer_name'].strip()) < 3:
-            raise serializers.ValidationError("Mijozning ismi kamida 3 ta harfdan iborat bo‘lishi kerak.")
+        if data.get('status') not in dict(Order.STATUS_CHOICES):
+            errors['status'] = "Noto‘g‘ri buyurtma holati."
+
+        # Mijozning ismi tekshiriladi
+        if 'customer_name' in data and len(data['customer_name'].strip()) < 3:
+            errors['customer_name'] = "Mijozning ismi kamida 3 ta harfdan iborat bo‘lishi kerak."
+
+        # Mijozning email manzili tekshiriladi
+        if 'customer_email' in data:
+            email = data['customer_email']
+            if "@" not in email or "." not in email:
+                errors['customer_email'] = "To‘g‘ri email manzilini kiriting."
+
+        if 'customer_phone' in data:
+            phone = data['customer_phone']
+            if not phone.isdigit():
+                errors['customer_phone'] = "Telefon raqami faqat raqamlardan iborat bo‘lishi kerak."
+            elif len(phone) < 7 or len(phone) > 15:
+                errors['customer_phone'] = "Telefon raqam uzunligi 7 dan 15 gacha bo‘lishi kerak."
+
+        if errors:
+            raise serializers.ValidationError(errors)
 
         return data
